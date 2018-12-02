@@ -144,11 +144,16 @@ class DefaultPhyLayer:
         self.bitrate = bitrate
         self.ber = ber
         self._current_rx_count = 0
+        self._channel_busy_start = 0
         self.stat = Stat()
         self.stat.total_tx = 0
         self.stat.total_rx = 0
         self.stat.total_collision = 0
         self.stat.total_error = 0
+        self.stat.total_bits_tx = 0
+        self.stat.total_bits_rx = 0
+        self.stat.total_channel_busy = 0
+        self.stat.total_channel_tx = 0
 
     def send_pdu(self,pdu):
         for (dist,node) in self.node.neighbor_distance_list:
@@ -160,6 +165,8 @@ class DefaultPhyLayer:
                 self.node.delayed_exec(prop_time+tx_time,node.phy.on_receive_pdu,
                         'end',pdu)
                 self.stat.total_tx += 1
+                self.stat.total_bits_tx += pdu.nbits
+                self.stat.total_channel_tx += tx_time
             else:
                 break
 
@@ -170,14 +177,20 @@ class DefaultPhyLayer:
                 self._collision = True
             else:
                 self._collision = False
+            if self._channel_busy_start == 0:
+                self._channel_busy_start = self.node.now
         elif evt == 'end':
             self._current_rx_count -= 1
             if self._current_rx_count != 0:
                 self._collision = True
+            else:
+                self.stat.total_channel_busy += self.node.now - self._channel_busy_start
+                self._channel_busy_start = 0
             if not self._collision:
                 if self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
                     self.node.mac.on_receive_pdu(pdu)
                     self.stat.total_rx += 1
+                    self.stat.total_bits_rx += pdu.nbits
                 else:
                     self.stat.total_error += 1
             else:

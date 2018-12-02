@@ -2,6 +2,7 @@ import random
 import wsnsimpy.wsnsimpy_tk as wsp
 
 SOURCE = 12
+MSG_NBITS = 10000*8
 
 ###########################################################
 class MyNode(wsp.LayeredNode):
@@ -26,7 +27,7 @@ class MyNode(wsp.LayeredNode):
     def broadcast(self):
         self.scene.nodewidth(self.id, 3)
         self.log(f"Broadcast message")
-        self.send(wsp.BROADCAST_ADDR)
+        self.send(wsp.BROADCAST_ADDR, nbits=MSG_NBITS)
 
     ##################
     def on_receive(self,sender,*args,**kwargs):
@@ -46,8 +47,13 @@ class MyNode(wsp.LayeredNode):
         # Physical layer
         self.log(f"PHY: Number of transmissions = {self.phy.stat.total_tx}")
         self.log(f"PHY: Number of successful receptions = {self.phy.stat.total_rx}")
+        self.log(f"PHY: Number of successful receptions = {self.phy.stat.total_rx}")
         self.log(f"PHY: Number of collisions = {self.phy.stat.total_collision}")
         self.log(f"PHY: Number of errors = {self.phy.stat.total_error}")
+        self.log(f"PHY: Total channel busy time (s) = {self.phy.stat.total_channel_busy}")
+        self.log(f"PHY: Total channel tx time (s) = {self.phy.stat.total_channel_tx}")
+        self.log(f"PHY: Number of bits transmitted = {self.phy.stat.total_bits_tx}")
+        self.log(f"PHY: Number of bits received successfully = {self.phy.stat.total_bits_rx}")
 
         # MAC layer
         self.log(f"MAC: Number of broadcasts sent = {self.mac.stat.total_tx_broadcast}")

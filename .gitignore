@@ -2,3 +2,5 @@
 *~
 build
 dist
+publish-test.sh
+wsnsimpy.egg-info
