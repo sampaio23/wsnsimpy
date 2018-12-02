@@ -145,6 +145,7 @@ class DefaultPhyLayer:
         self.ber = ber
         self._current_rx_count = 0
         self._channel_busy_start = 0
+
         self.stat = Stat()
         self.stat.total_tx = 0
         self.stat.total_rx = 0
@@ -220,6 +221,7 @@ class DefaultMacLayer:
         self.stat.total_ack = 0
 
     def process_queue(self):
+        retries = 0
         while self.tx_queue:
             frame = self.tx_queue[0]
 
@@ -242,12 +244,17 @@ class DefaultMacLayer:
                     self.node.timeout(duration),
                     self.ack_event,
                     ])
-                if self.ack_event.ok:
+                if self.ack_event.triggered:
+                    retries = 0
                     self.tx_queue.popleft()
                     self.stat.total_tx_unicast += 1
                 else:
+                    retries += 1
+                    backoff_time = self.node.sim.random.randrange(2**retries)*5e-3
+                    yield self.node.timeout(backoff_time)
                     self.stat.total_retransmit += 1
             else:
+                retries = 0
                 self.tx_queue.popleft()
                 self.stat.total_tx_broadcast += 1
             self.ack_event = None
@@ -278,7 +285,7 @@ class DefaultMacLayer:
                     self.stat.total_ack += 1
                     self.stat.total_rx_unicast += 1
                 else:
-                    self.stat.total_rx_broadcast = 0
+                    self.stat.total_rx_broadcast += 1
         elif pdu.type == 'ack' and self.ack_event is not None:
             if pdu.for_frame == self.ack_event.wait_for:
                 self.ack_event.succeed()
