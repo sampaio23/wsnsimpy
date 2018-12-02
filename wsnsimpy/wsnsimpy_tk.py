@@ -16,12 +16,12 @@ class Node(wsnsimpy.Node):
         self.scene.node(id,*pos)
 
     ###################
-    def send(self,dest,**kwargs):
+    def send(self,dest,*args,**kwargs):
         obj_id = self.scene.circle(
                     self.pos[0], self.pos[1],
                     self.tx_range,
                     line="wsnsimpy:tx")
-        super().send(dest,**kwargs)
+        super().send(dest,*args,**kwargs)
         self.delayed_exec(0.2,self.scene.delshape,obj_id)
         if dest is not wsnsimpy.BROADCAST_ADDR:
             destPos = self.sim.nodes[dest].pos
@@ -35,6 +35,38 @@ class Node(wsnsimpy.Node):
     def move(self,x,y):
         super().move(x,y)
         self.scene.nodemove(self.id,x,y)
+
+
+###########################################################
+class LayeredNode(wsnsimpy.LayeredNode):
+
+    ###################
+    def __init__(self,sim,id,pos):
+        super().__init__(sim,id,pos)
+        self.scene = self.sim.scene
+        self.scene.node(id,*pos)
+
+    ###################
+    def send(self,dest,*args,**kwargs):
+        obj_id = self.scene.circle(
+                    self.pos[0], self.pos[1],
+                    self.tx_range,
+                    line="wsnsimpy:tx")
+        super().send(dest,*args,**kwargs)
+        self.delayed_exec(0.2,self.scene.delshape,obj_id)
+        if dest is not wsnsimpy.BROADCAST_ADDR:
+            destPos = self.sim.nodes[dest].pos
+            obj_id = self.scene.line(
+                self.pos[0], self.pos[1],
+                destPos[0], destPos[1],
+                line="wsnsimpy:unicast")
+            self.delayed_exec(0.2,self.scene.delshape,obj_id)
+
+    ###################
+    def move(self,x,y):
+        super().move(x,y)
+        self.scene.nodemove(self.id,x,y)
+
 
 ###########################################################
 class _FakeScene:

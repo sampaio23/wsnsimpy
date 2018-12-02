@@ -1,5 +1,7 @@
+from collections import deque
 import bisect
 import inspect
+import random
 import simpy
 from simpy.util import start_delayed
 
@@ -38,7 +40,7 @@ class Node:
 
     ############################
     def __repr__(self):
-        return '<Node %d:(%s,%s)>' % (self.id,self.pos[0],self.pos[1])
+        return '<Node %d:(%.2f,%.2f)>' % (self.id,self.pos[0],self.pos[1])
 
     ############################
     def __lt__(self,obj):
@@ -55,10 +57,10 @@ class Node:
             print(f"Node {'#'+str(self.id):4}[{self.now:10.5f}] {msg}")
 
     ############################
-    def send(self,dest,*args,**kwargs):
+    def send(self,dst,*args,**kwargs):
         for (dist,node) in self.neighbor_distance_list:
             if dist <= self.tx_range:
-                if dest == BROADCAST_ADDR or dest is node.id:
+                if dst == BROADCAST_ADDR or dst is node.id:
                     prop_time = dist/1000000
                     self.delayed_exec(
                             prop_time,node.on_receive,self.id,*args,**kwargs)
@@ -75,6 +77,14 @@ class Node:
             else:
                 break
         return _neighbors
+
+    ############################
+    def create_event(self):
+        return self.sim.env.event()
+
+    ############################
+    def create_process(self,func,*args,**kwargs):
+        return ensure_generator(self.sim.env,func,*args,**kwargs)
 
     ############################
     def start_process(self,process):
@@ -98,31 +108,193 @@ class Node:
         self.sim.update_neighbor_list(self.id)
 
     ############################
-    def on_receive(self,sender,**kwargs):
-        '''
-        To be overriden
-        '''
+    def on_receive(self,sender,*args,**kwargs):
+        '''To be overriden'''
         pass
 
     ############################
     def on_timer_fired(self,*args,**kwargs):
-        '''
-        To be overriden
-        '''
+        '''To be overriden'''
         pass
 
     ############################
     def finish(self):
-        '''
-        To be overriden
-        '''
+        '''To be overriden'''
         pass
+
+###########################################################
+class PDU:
+    def __init__(self,layer,nbits,**fields):
+        self.layer = layer
+        self.nbits = nbits
+        for f in fields:
+            setattr(self,f,fields[f])
+
+###########################################################
+class DefaultPhyLayer:
+
+    LAYER_NAME = 'phy'
+
+    def __init__(self,node,bitrate=250e3,ber=0):
+        self.node = node
+        self.bitrate = bitrate
+        self.ber = ber
+        self._current_rx_count = 0
+
+    def send_pdu(self,pdu):
+        for (dist,node) in self.node.neighbor_distance_list:
+            if dist <= self.node.tx_range:
+                prop_time = dist/3e8
+                tx_time = pdu.nbits/self.bitrate
+                self.node.delayed_exec(prop_time,node.phy.on_receive_pdu,
+                        'start',pdu)
+                self.node.delayed_exec(prop_time+tx_time,node.phy.on_receive_pdu,
+                        'end',pdu)
+            else:
+                break
+
+    def on_receive_pdu(self,evt,pdu):
+        if evt == 'start':
+            self._current_rx_count += 1
+            if self._current_rx_count > 1:
+                self._collision = True
+            else:
+                self._collision = False
+        elif evt == 'end':
+            self._current_rx_count -= 1
+            if self._current_rx_count != 0:
+                self._collision = True
+            if not self._collision and \
+               self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
+                self.node.mac.on_receive_pdu(pdu)
+
+    def cca(self):
+        """Return True if the channel is clear"""
+        return self._current_rx_count == 0
+
+
+###########################################################
+class DefaultMacLayer:
+
+    LAYER_NAME = 'mac'
+    HEADER_BITS = 64
+
+    def __init__(self,node):
+        self.node = node
+        self.tx_queue = deque()
+        self.ack_event = None
+
+    def process_queue(self):
+        while self.tx_queue:
+            frame = self.tx_queue[0]
+
+            # persistent process with exponential backoff
+            k = 1
+            while True:
+                wait_time = self.node.sim.random.randrange(k)*5e-3
+                yield self.node.timeout(wait_time)
+                if self.node.phy.cca():
+                    break
+                k = k*2
+            self.node.phy.send_pdu(frame)
+
+            # wait for ack if this is a unicast frame
+            if frame.dst != BROADCAST_ADDR:
+                self.ack_event = self.node.create_event()
+                self.ack_event.wait_for = frame
+                duration = frame.nbits/self.node.phy.bitrate + 1e-3
+                yield simpy.AnyOf(self.node.sim.env, [
+                    self.node.timeout(duration),
+                    self.ack_event,
+                    ])
+                if self.ack_event.ok:
+                    self.tx_queue.popleft()
+            else:
+                self.tx_queue.popleft()
+            self.ack_event = None
+
+    def send_pdu(self,dst,pdu):
+        mac_pdu = PDU(self.LAYER_NAME,pdu.nbits+self.HEADER_BITS,
+                type='data',
+                src=self.node.id,
+                dst=dst,
+                payload=pdu)
+        self.tx_queue.append(mac_pdu)
+        if len(self.tx_queue) == 1:
+            self.node.start_process(self.node.create_process(
+                self.process_queue))
+
+    def on_receive_pdu(self,pdu):
+        if pdu.type == 'data':
+            if pdu.dst == BROADCAST_ADDR or pdu.dst == self.node.id:
+                self.node.net.on_receive_pdu(pdu.src,pdu.payload)
+                # ack if this is a unicast frame
+                if pdu.dst != BROADCAST_ADDR:
+                    ack = PDU(self.LAYER_NAME,nbits=self.HEADER_BITS,
+                            type='ack',
+                            for_frame=pdu)
+                    self.node.phy.send_pdu(ack)
+        elif pdu.type == 'ack' and self.ack_event is not None:
+            if pdu.for_frame == self.ack_event.wait_for:
+                self.ack_event.succeed()
+
+###########################################################
+class DefaultNetLayer:
+
+    LAYER_NAME = 'net'
+    HEADER_BITS = 64
+
+    def __init__(self,node):
+        self.node = node
+
+    def send_pdu(self,dst,pdu):
+        net_pdu = PDU(self.LAYER_NAME,pdu.nbits+self.HEADER_BITS,
+                src=self.node.id,
+                dst=dst,
+                payload=pdu)
+        self.node.mac.send_pdu(dst,net_pdu)
+
+    def on_receive_pdu(self,src,pdu):
+        self.node.on_receive_pdu(src,pdu.payload)
+
+###########################################################
+class LayeredNode(Node):
+
+    DEFAULT_MSG_NBITS = 64*8
+
+    ############################
+    def __init__(self,sim,id,pos):
+        super().__init__(sim,id,pos)
+        self.phy = DefaultPhyLayer(self)
+        self.mac = DefaultMacLayer(self)
+        self.net = DefaultNetLayer(self)
+
+    ############################
+    def set_layers(self,phy=None,mac=None,net=None):
+        if phy is not None:
+            self.phy = phy(self)
+        if mac is not None:
+            self.mac = mac(self)
+        if net is not None:
+            self.net = net(self)
+
+    ############################
+    def send(self,dst,*args,**kwargs):
+        nbits = kwargs.get("nbits",self.DEFAULT_MSG_NBITS)
+        app_pdu = PDU("app",nbits,args=args,kwargs=kwargs)
+        self.net.send_pdu(dst,app_pdu)
+
+    ############################
+    def on_receive_pdu(self,src,pdu):
+        # use process just in case on_receive is a generator
+        self.start_process(self.create_process(
+            self.on_receive,src,*pdu.args,**pdu.kwargs))
 
 ###########################################################
 class Simulator:
 
     ############################
-    def __init__(self,until,timescale=1):
+    def __init__(self,until,timescale=1,seed=0):
         if timescale > 0:
             self.env = simpy.rt.RealtimeEnvironment(factor=timescale,strict=False)
         else:
@@ -131,6 +303,7 @@ class Simulator:
         self.until = until
         self.timescale = timescale
         self.timeout = self.env.timeout
+        self.random = random.Random(seed)
 
     ############################
     def init(self):
