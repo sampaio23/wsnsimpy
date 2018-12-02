@@ -6,7 +6,7 @@ MSG_NBITS = 1000*8
 
 ###########################################################
 class MyNode(wsp.LayeredNode):
-    tx_range = 100
+    tx_range = 120
 
     ##################
     def init(self):
@@ -72,8 +72,8 @@ sim = wsp.Simulator(
         title="Flooding Demo")
 for x in range(10):
     for y in range(10):
-        px = 50 + x*60 #+ random.uniform(-20,20)
-        py = 50 + y*60 #+ random.uniform(-20,20)
+        px = 50 + x*60 + random.uniform(-20,20)
+        py = 50 + y*60 + random.uniform(-20,20)
         node = sim.add_node(MyNode, (px,py))
         node.logging = True
 sim.scene.linestyle("collision",color=(0,0,1),width=3)
