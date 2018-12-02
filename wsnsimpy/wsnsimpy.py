@@ -157,45 +157,57 @@ class DefaultPhyLayer:
         self.stat.total_channel_tx = 0
 
     def send_pdu(self,pdu):
+        tx_time = pdu.nbits/self.bitrate
+        self.on_tx_start(pdu)
+        self.node.delayed_exec(tx_time,self.on_tx_end,pdu)
+        self.stat.total_tx += 1
+        self.stat.total_bits_tx += pdu.nbits
+        self.stat.total_channel_tx += tx_time
         for (dist,node) in self.node.neighbor_distance_list:
             if dist <= self.node.tx_range:
                 prop_time = dist/3e8
-                tx_time = pdu.nbits/self.bitrate
-                self.node.delayed_exec(prop_time,node.phy.on_receive_pdu,
-                        'start',pdu)
-                self.node.delayed_exec(prop_time+tx_time,node.phy.on_receive_pdu,
-                        'end',pdu)
-                self.stat.total_tx += 1
-                self.stat.total_bits_tx += pdu.nbits
-                self.stat.total_channel_tx += tx_time
+                self.node.delayed_exec(
+                        prop_time,node.phy.on_rx_start,pdu)
+                self.node.delayed_exec(
+                        prop_time+tx_time,node.phy.on_rx_end,pdu)
             else:
                 break
 
-    def on_receive_pdu(self,evt,pdu):
-        if evt == 'start':
-            self._current_rx_count += 1
-            if self._current_rx_count > 1:
-                self._collision = True
+    def on_tx_start(self,pdu):
+        pass
+
+    def on_tx_end(self,pdu):
+        pass
+
+    def on_rx_start(self,pdu):
+        self._current_rx_count += 1
+        if self._current_rx_count > 1:
+            self._collision = True
+            self.on_collision(pdu)
+        else:
+            self._collision = False
+        if self._channel_busy_start == 0:
+            self._channel_busy_start = self.node.now
+
+    def on_rx_end(self,pdu):
+        self._current_rx_count -= 1
+        if self._current_rx_count != 0:
+            self._collision = True
+        else:
+            self.stat.total_channel_busy += self.node.now - self._channel_busy_start
+            self._channel_busy_start = 0
+        if not self._collision:
+            if self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
+                self.node.mac.on_receive_pdu(pdu)
+                self.stat.total_rx += 1
+                self.stat.total_bits_rx += pdu.nbits
             else:
-                self._collision = False
-            if self._channel_busy_start == 0:
-                self._channel_busy_start = self.node.now
-        elif evt == 'end':
-            self._current_rx_count -= 1
-            if self._current_rx_count != 0:
-                self._collision = True
-            else:
-                self.stat.total_channel_busy += self.node.now - self._channel_busy_start
-                self._channel_busy_start = 0
-            if not self._collision:
-                if self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
-                    self.node.mac.on_receive_pdu(pdu)
-                    self.stat.total_rx += 1
-                    self.stat.total_bits_rx += pdu.nbits
-                else:
-                    self.stat.total_error += 1
-            else:
-                self.stat.total_collision += 1
+                self.stat.total_error += 1
+        else:
+            self.stat.total_collision += 1
+
+    def on_collision(self,pdu):
+        pass
 
     def cca(self):
         """Return True if the channel is clear"""

@@ -38,6 +38,46 @@ class Node(wsnsimpy.Node):
 
 
 ###########################################################
+class DefaultPhyLayer(wsnsimpy.DefaultPhyLayer):
+
+    def on_tx_start(self,pdu):
+        super().on_tx_start(pdu)
+        if pdu.type == "ack":
+            linetype = "wsnsimpy:ack"
+        else:
+            linetype = "wsnsimpy:tx"
+        x,y = self.node.pos
+        tx_time = pdu.nbits/self.bitrate
+        oid = self.node.scene.circle(
+                x,y,self.node.tx_range,line=linetype)
+        self.node.delayed_exec(max(tx_time,0.2),
+                self.node.scene.delshape,oid)
+
+    def on_collision(self,pdu):
+        super().on_collision(pdu)
+        x,y = self.node.pos
+        line1 = self.node.scene.line(x-5,y-5,x+5,y+5,line="wsnsimpy:collision")
+        line2 = self.node.scene.line(x+5,y-5,x-5,y+5,line="wsnsimpy:collision")
+        self.node.delayed_exec(0.2,self.node.scene.delshape,line1)
+        self.node.delayed_exec(0.2,self.node.scene.delshape,line2)
+
+
+###########################################################
+class DefaultMacLayer(wsnsimpy.DefaultMacLayer):
+    def on_receive_pdu(self,pdu):
+        super().on_receive_pdu(pdu)
+        if pdu.type != "data" or pdu.dst != self.node.id:
+            return
+        sx,sy = self.node.sim.nodes[pdu.src].pos
+        dx,dy = self.node.pos
+        oid = self.node.scene.line(sx,sy,dx,dy,line="wsnsimpy:unicast")
+        self.node.delayed_exec(0.2,self.node.scene.delshape,oid)
+
+###########################################################
+class DefaultNetLayer(wsnsimpy.DefaultNetLayer):
+    pass
+
+###########################################################
 class LayeredNode(wsnsimpy.LayeredNode):
 
     ###################
@@ -45,22 +85,10 @@ class LayeredNode(wsnsimpy.LayeredNode):
         super().__init__(sim,id,pos)
         self.scene = self.sim.scene
         self.scene.node(id,*pos)
-
-    ###################
-    def send(self,dest,*args,**kwargs):
-        obj_id = self.scene.circle(
-                    self.pos[0], self.pos[1],
-                    self.tx_range,
-                    line="wsnsimpy:tx")
-        super().send(dest,*args,**kwargs)
-        self.delayed_exec(0.2,self.scene.delshape,obj_id)
-        if dest is not wsnsimpy.BROADCAST_ADDR:
-            destPos = self.sim.nodes[dest].pos
-            obj_id = self.scene.line(
-                self.pos[0], self.pos[1],
-                destPos[0], destPos[1],
-                line="wsnsimpy:unicast")
-            self.delayed_exec(0.2,self.scene.delshape,obj_id)
+        self.set_layers(
+                phy=DefaultPhyLayer,
+                mac=DefaultMacLayer,
+                net=DefaultNetLayer)
 
     ###################
     def move(self,x,y):
@@ -86,8 +114,10 @@ class Simulator(wsnsimpy.Simulator):
         self.terrain_size = terrain_size
         if self.visual:
             self.scene = Scene(realtime=True)
-            self.scene.linestyle("wsnsimpy:tx", color=(1,0,0), dash=(5,5))
-            self.scene.linestyle("wsnsimpy:unicast", color=(1,0,0), width=3, arrow='head')
+            self.scene.linestyle("wsnsimpy:tx", color=(0,0,1), dash=(5,5))
+            self.scene.linestyle("wsnsimpy:ack", color=(0,1,1), dash=(5,5))
+            self.scene.linestyle("wsnsimpy:unicast", color=(0,0,1), width=3, arrow='head')
+            self.scene.linestyle("wsnsimpy:collision", color=(1,0,0), width=3)
             if title is None:
                 title = "WsnSimPy"
             self.tkplot = Plotter(windowTitle=title,terrain_size=terrain_size)

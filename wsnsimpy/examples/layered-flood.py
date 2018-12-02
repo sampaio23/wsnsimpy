@@ -2,7 +2,7 @@ import random
 import wsnsimpy.wsnsimpy_tk as wsp
 
 SOURCE = 12
-MSG_NBITS = 10000*8
+MSG_NBITS = 1000*8
 
 ###########################################################
 class MyNode(wsp.LayeredNode):
@@ -37,7 +37,7 @@ class MyNode(wsp.LayeredNode):
             return
         self.log(f"New message; prepare to rebroadcast")
         self.recv = True
-        self.scene.nodecolor(self.id,1,0,0)
+        self.scene.nodecolor(self.id,0,0,1)
         yield self.timeout(random.uniform(0.5,1.0))
         #yield self.timeout(0.1)
         self.broadcast()
@@ -66,16 +66,17 @@ class MyNode(wsp.LayeredNode):
 ###########################################################
 sim = wsp.Simulator(
         until=15,
-        timescale=0,
-        visual=False,
+        timescale=1,
+        visual=True,
         terrain_size=(700,700),
         title="Flooding Demo")
 for x in range(10):
     for y in range(10):
-        px = 50 + x*60 + random.uniform(-20,20)
-        py = 50 + y*60 + random.uniform(-20,20)
+        px = 50 + x*60 #+ random.uniform(-20,20)
+        py = 50 + y*60 #+ random.uniform(-20,20)
         node = sim.add_node(MyNode, (px,py))
         node.logging = True
+sim.scene.linestyle("collision",color=(0,0,1),width=3)
 sim.run()
 
 for n in sim.nodes:

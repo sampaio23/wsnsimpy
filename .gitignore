@@ -3,4 +3,6 @@
 build
 dist
 publish-test.sh
+publish.sh
 wsnsimpy.egg-info
+tmp
