@@ -18,8 +18,8 @@ directly from a command line.
 
     python -m wsnsimpy.examples.flood
 
-![Flooding Demostration](img/flood.png)
+<img src="img/flood.png" width="300" height="300" alt="Flooding Demonstration">
 
     python -m wsnsimpy.examples.aodv
 
-![AODV Demostration](img/aodv.png)
+<img src="img/aodv.png" width="300" height="300" alt="AODV Demonstration">
