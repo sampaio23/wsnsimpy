@@ -47,7 +47,6 @@ class MyNode(wsp.LayeredNode):
         # Physical layer
         self.log(f"PHY: Number of transmissions = {self.phy.stat.total_tx}")
         self.log(f"PHY: Number of successful receptions = {self.phy.stat.total_rx}")
-        self.log(f"PHY: Number of successful receptions = {self.phy.stat.total_rx}")
         self.log(f"PHY: Number of collisions = {self.phy.stat.total_collision}")
         self.log(f"PHY: Number of errors = {self.phy.stat.total_error}")
         self.log(f"PHY: Total channel busy time (s) = {self.phy.stat.total_channel_busy}")

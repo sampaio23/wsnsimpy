@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="wsnsimpy",
-    version="0.2.4",
+    version="0.2.5",
     author="Chaiporn Jaikaeo",
     author_email="chaiporn.j@ku.ac.th",
     description="SimPy-based WSN Simulator",
