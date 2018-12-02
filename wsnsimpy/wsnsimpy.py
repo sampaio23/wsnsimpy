@@ -26,6 +26,10 @@ def distance(pos1,pos2):
     return ((pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)**0.5
 
 ###########################################################
+class Stat:
+    pass
+
+###########################################################
 class Node:
     tx_range = 0
 
@@ -140,6 +144,11 @@ class DefaultPhyLayer:
         self.bitrate = bitrate
         self.ber = ber
         self._current_rx_count = 0
+        self.stat = Stat()
+        self.stat.total_tx = 0
+        self.stat.total_rx = 0
+        self.stat.total_collision = 0
+        self.stat.total_error = 0
 
     def send_pdu(self,pdu):
         for (dist,node) in self.node.neighbor_distance_list:
@@ -150,6 +159,7 @@ class DefaultPhyLayer:
                         'start',pdu)
                 self.node.delayed_exec(prop_time+tx_time,node.phy.on_receive_pdu,
                         'end',pdu)
+                self.stat.total_tx += 1
             else:
                 break
 
@@ -164,9 +174,14 @@ class DefaultPhyLayer:
             self._current_rx_count -= 1
             if self._current_rx_count != 0:
                 self._collision = True
-            if not self._collision and \
-               self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
-                self.node.mac.on_receive_pdu(pdu)
+            if not self._collision:
+                if self.node.sim.random.random() < (1-self.ber)**pdu.nbits:
+                    self.node.mac.on_receive_pdu(pdu)
+                    self.stat.total_rx += 1
+                else:
+                    self.stat.total_error += 1
+            else:
+                self.stat.total_collision += 1
 
     def cca(self):
         """Return True if the channel is clear"""
@@ -183,6 +198,13 @@ class DefaultMacLayer:
         self.node = node
         self.tx_queue = deque()
         self.ack_event = None
+        self.stat = Stat()
+        self.stat.total_tx_broadcast = 0
+        self.stat.total_tx_unicast = 0
+        self.stat.total_rx_broadcast = 0
+        self.stat.total_rx_unicast = 0
+        self.stat.total_retransmit = 0
+        self.stat.total_ack = 0
 
     def process_queue(self):
         while self.tx_queue:
@@ -209,8 +231,12 @@ class DefaultMacLayer:
                     ])
                 if self.ack_event.ok:
                     self.tx_queue.popleft()
+                    self.stat.total_tx_unicast += 1
+                else:
+                    self.stat.total_retransmit += 1
             else:
                 self.tx_queue.popleft()
+                self.stat.total_tx_broadcast += 1
             self.ack_event = None
 
     def send_pdu(self,dst,pdu):
@@ -227,13 +253,19 @@ class DefaultMacLayer:
     def on_receive_pdu(self,pdu):
         if pdu.type == 'data':
             if pdu.dst == BROADCAST_ADDR or pdu.dst == self.node.id:
+                # TODO: need to get rid of duplications
                 self.node.net.on_receive_pdu(pdu.src,pdu.payload)
+
                 # ack if this is a unicast frame
                 if pdu.dst != BROADCAST_ADDR:
                     ack = PDU(self.LAYER_NAME,nbits=self.HEADER_BITS,
                             type='ack',
                             for_frame=pdu)
                     self.node.phy.send_pdu(ack)
+                    self.stat.total_ack += 1
+                    self.stat.total_rx_unicast += 1
+                else:
+                    self.stat.total_rx_broadcast = 0
         elif pdu.type == 'ack' and self.ack_event is not None:
             if pdu.for_frame == self.ack_event.wait_for:
                 self.ack_event.succeed()
@@ -246,6 +278,7 @@ class DefaultNetLayer:
 
     def __init__(self,node):
         self.node = node
+        self.stat = Stat()
 
     def send_pdu(self,dst,pdu):
         net_pdu = PDU(self.LAYER_NAME,pdu.nbits+self.HEADER_BITS,

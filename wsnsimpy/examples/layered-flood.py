@@ -38,13 +38,30 @@ class MyNode(wsp.LayeredNode):
         self.recv = True
         self.scene.nodecolor(self.id,1,0,0)
         yield self.timeout(random.uniform(0.5,1.0))
+        #yield self.timeout(0.1)
         self.broadcast()
+
+    ##################
+    def show_stats(self):
+        # Physical layer
+        self.log(f"PHY: Number of transmissions = {self.phy.stat.total_tx}")
+        self.log(f"PHY: Number of successful receptions = {self.phy.stat.total_rx}")
+        self.log(f"PHY: Number of collisions = {self.phy.stat.total_collision}")
+        self.log(f"PHY: Number of errors = {self.phy.stat.total_error}")
+
+        # MAC layer
+        self.log(f"MAC: Number of broadcasts sent = {self.mac.stat.total_tx_broadcast}")
+        self.log(f"MAC: Number of unicasts sent = {self.mac.stat.total_tx_unicast}")
+        self.log(f"MAC: Number of broadcasts received = {self.mac.stat.total_rx_broadcast}")
+        self.log(f"MAC: Number of unicasts received = {self.mac.stat.total_rx_unicast}")
+        self.log(f"MAC: Number of retransmissions = {self.mac.stat.total_retransmit}")
+        self.log(f"MAC: Number of acks sent = {self.mac.stat.total_ack}")
         
 ###########################################################
 sim = wsp.Simulator(
-        until=100,
-        timescale=1,
-        visual=True,
+        until=15,
+        timescale=0,
+        visual=False,
         terrain_size=(700,700),
         title="Flooding Demo")
 for x in range(10):
@@ -54,3 +71,6 @@ for x in range(10):
         node = sim.add_node(MyNode, (px,py))
         node.logging = True
 sim.run()
+
+for n in sim.nodes:
+    n.show_stats()
