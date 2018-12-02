@@ -6,7 +6,7 @@ MSG_NBITS = 10000*8
 
 ###########################################################
 class MyNode(wsp.LayeredNode):
-    tx_range = 80
+    tx_range = 100
 
     ##################
     def init(self):
