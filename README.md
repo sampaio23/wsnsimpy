@@ -9,7 +9,11 @@ simulation framework.
 Installation
 ------------
 
+This will install the [original version](https://gitlab.com/cjaikaeo/wsnsimpy) by Chaiporn Jaikaeo.
+
     pip install wsnsimpy
+
+To install this version, you have to clone this repository and manually install.
     
 Running Examples
 ----------------
