@@ -223,7 +223,7 @@ class Scene:
 
     ###################
     @informPlotters
-    def node(self,id,x,y):
+    def node(self, id, x, y):
         """
         (Scene scripting command)
         Define a node with the specified ID and location (x,y)

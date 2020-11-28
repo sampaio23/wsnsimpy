@@ -127,6 +127,113 @@ class Node:
         pass
 
 ###########################################################
+class IoTNode:
+    tx_range = 100
+    battery = 1
+    bandwidth = 1
+    error_rate = 0
+    WiSARD = 1
+
+    ############################
+    def __init__(self,sim,id,pos):
+        self.pos = pos
+        self.sim = sim
+        self.id  = id
+        self.logging = True
+        self.neighbor_distance_list = []
+        self.timeout = self.sim.timeout
+        
+        self.battery = random.uniform(0.8, 1)
+        self.tx_range = 200
+        self.battery = 1
+        self.bandwidth = 1
+        self.error_rate = 0
+        self.WiSARD = random.uniform(0.3, 1)
+
+    ############################
+    def __repr__(self):
+        return '<Node %d:(%.2f,%.2f)>' % (self.id,self.pos[0],self.pos[1])
+
+    ############################
+    def __lt__(self,obj):
+        return self.id < obj.id
+
+    ############################
+    @property
+    def now(self):
+        return self.sim.env.now
+
+    ############################
+    def log(self,msg):
+        if self.logging:
+            print(f"Node {'#'+str(self.id):4}[{self.now:10.5f}] {msg}")
+
+    ############################
+    def send(self,dst,*args,**kwargs):
+        for (dist,node) in self.neighbor_distance_list:
+            if dist <= self.tx_range*self.WiSARD*node.WiSARD:
+            #if dist <= self.tx_range:
+                if dst == BROADCAST_ADDR or dst is node.id:
+                    prop_time = dist/300000000
+                    self.delayed_exec(
+                            prop_time,node.on_receive,self.id,*args,**kwargs)
+
+    ############################
+    @property
+    def neighbors(self):
+        _neighbors = []
+        for (dist,node) in self.neighbor_distance_list:
+            if dist <= self.tx_range:
+                _neighbors.append(node)
+            else:
+                break
+        return _neighbors
+
+    ############################
+    def create_event(self):
+        return self.sim.env.event()
+
+    ############################
+    def create_process(self,func,*args,**kwargs):
+        return ensure_generator(self.sim.env,func,*args,**kwargs)
+
+    ############################
+    def start_process(self,process):
+        return self.sim.env.process(process)
+
+    ############################
+    def delayed_exec(self,delay,func,*args,**kwargs):
+        return self.sim.delayed_exec(delay,func,*args,**kwargs)
+
+    ############################
+    def init(self):
+        pass
+
+    ############################
+    def run(self):
+        pass
+
+    ###################
+    def move(self,x,y):
+        self.pos = (x,y)
+        self.sim.update_neighbor_list(self.id)
+
+    ############################
+    def on_receive(self,sender,*args,**kwargs):
+        '''To be overriden'''
+        pass
+
+    ############################
+    def on_timer_fired(self,*args,**kwargs):
+        '''To be overriden'''
+        pass
+
+    ############################
+    def finish(self):
+        '''To be overriden'''
+        pass
+
+###########################################################
 class PDU:
     def __init__(self,layer,nbits,**fields):
         self.layer = layer
