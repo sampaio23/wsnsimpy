@@ -1,109 +1,110 @@
 import random
 import wsnsimpy.wsnsimpy_tk as wsp
 import numpy as np
+import pickle
 
 battery = []
 
-SOURCE = 0
-DEST   = int(99*random.uniform(0,1))
+SOURCE = 55
+
+DESTS = list(range(100))
+DESTS.remove(SOURCE)
+
+TX_RANGE = pickle.load( open( "TX_RANGE.p", "rb" ) )
+PX = pickle.load( open( "PX.p", "rb" ) )
+PY = pickle.load( open( "PY.p", "rb" ) )
+NEXT = pickle.load( open( "NEXT.p", "rb" ) )
+BATTERY = pickle.load( open( "BATTERY.p", "rb") )
+
+###########################################################
+class IoTDevice(wsp.IoTNode):
+
+    tx_energy = 0
+    rx_energy = 0
+    idle_energy = 0
+
+    ###################
+    def init(self):
+        super().init()
+
+        # at tx_range = 100, tx_energy = 1 uJ/bit
+        self.tx_energy = 64*(2*10**-7 + self.tx_range**2/(10000/(8*10**-7)))
+        self.rx_energy = 64*0.5*10**-6
+        self.idle_energy = 10**-7
+
+    ###################
+    def run(self):
+        self.scene.nodecolor(self.id, 0, 0, 0.5)
+        self.scene.nodewidth(self.id, 2)
+        if self.id is SOURCE:
+            DEST = random.sample(DESTS, 1)[0]
+            #self.log(f"Final destination: {DEST}")
+            self.scene.nodecolor(self.id,1,0,0)
+            self.scene.nodewidth(self.id,2)
+            self.send(self.next[DEST], final = DEST, msg='rreq', src=self.id)
+            #self.log(f"Send data to {self.next[DEST]}")
+
+        else:
+            self.scene.nodecolor(self.id,.7,.7,.7)
+
+    ###################
+    def on_receive(self, sender, final, msg, src, **kwargs):
+        if msg == 'rreq':
+            self.scene.addlink(self.id, sender, "parent")
+            self.battery = self.now*self.idle_energy
+            self.battery = self.battery + self.rx_energy
+            self.battery = self.battery + self.tx_energy
+
+            if self.battery >= self.capacity*2*10**-4:
+                self.log("DEPLETED!!!\nDEPLETED!!!\nDEPLETED!!!\nDEPLETED!!!\n")
+                yield self.timeout(2000)
+
+            if self.id is final:
+                self.scene.clearlinks()
+
+                self.send(self.next[SOURCE], final = SOURCE, msg='rreply', src = self.id)
+
+            else:
+                self.send(self.next[final], final = final, msg='rreq', src = self.id)
+
+        elif msg == 'rreply':
+            self.scene.addlink(self.id, sender, "parent")
+            if self.id is SOURCE:
+
+                yield self.timeout(0.25)
+                self.scene.clearlinks()
+                yield self.timeout(0.25)
+
+                DEST = random.sample(DESTS, 1)[0]
+                #self.log(f"Final destination: {DEST}")
+
+                self.scene.nodecolor(self.id,1,0,0)
+                self.scene.nodewidth(self.id,2)
+                
+                self.send(self.next[DEST], final = DEST, msg='rreq', src=self.id)
+            else:
+                self.battery = self.now*self.idle_energy
+                self.battery = self.battery + self.rx_energy
+                self.battery = self.battery + self.tx_energy
+                
+                if self.battery >= self.capacity*2*10**-4:
+                    self.log("DEPLETED!!!\nDEPLETED!!!\nDEPLETED!!!\nDEPLETED!!!\n")
+                    yield self.timeout(2000)
+
+                self.send(self.next[SOURCE], final = SOURCE, msg='rreply', src = self.id)
 
 ###########################################################
 def delay():
     return random.uniform(.2,.8)
 
 ###########################################################
-class IoTDevice(wsp.IoTNode):
 
-    ###################
-    def init(self):
-        super().init()
-        self.prev = None
-
-    ###################
-    def run(self):
-        self.scene.nodecolor(self.id, 0, 0, 0.5)
-        self.scene.nodewidth(self.id, 0.5+4*self.WiSARD)
-        if self.id is SOURCE:
-            self.scene.nodecolor(self.id,1,0,0)
-            self.scene.nodewidth(self.id,1)
-            yield self.timeout(1)
-            self.send_rreq(self.id)
-        elif self.id is DEST:
-            self.scene.nodecolor(self.id,1,0,0)
-            self.scene.nodewidth(self.id,1)
-       # else:
-            #self.scene.nodecolor(self.id,.7,.7,.7)
-
-    ###################
-    def send_rreq(self,src):
-        self.send(wsp.BROADCAST_ADDR, msg='rreq', src=src)
-
-    ###################
-    def send_rreply(self,src):
-        #if self.id is not DEST:
-        #    self.scene.nodecolor(self.id,0,.7,0)
-        #    self.scene.nodewidth(self.id,2)
-        battery.append(self.WiSARD)
-        self.send(self.prev, msg='rreply', src=src)
-
-    ###################
-    def start_send_data(self):
-        #self.scene.clearlinks()
-        seq = 0
-        while True:
-            yield self.timeout(1)
-            self.log(f"Send data to {DEST} with seq {seq}")
-            self.log(str(np.mean(battery)) + " " + str(len(battery)))
-            break
-            self.send_data(self.id, seq)
-            seq += 1
-
-    ###################
-    def send_data(self,src,seq):
-        self.log(f"Forward data with seq {seq} via {self.next}")
-        self.send(self.next, msg='data', src=src, seq=seq)
-
-    ###################
-    def on_receive(self, sender, msg, src, **kwargs):
-        if msg == 'rreq':
-            if self.prev is not None: return
-            self.prev = sender
-            self.scene.addlink(sender,self.id,"parent")
-            if self.id is DEST:
-                self.log(f"Receive RREQ from {src}")
-                yield self.timeout(5)
-                self.log(f"Send RREP to {src}")
-                self.send_rreply(self.id)
-            else:
-                yield self.timeout(delay())
-                self.send_rreq(self.id)
-
-        elif msg == 'rreply':
-            self.next = sender
-            if self.id is SOURCE:
-                self.log(f"Receive RREP from {src}")
-                yield self.timeout(5)
-                self.log("Start sending data")
-                self.start_process(self.start_send_data())
-            else:
-                yield self.timeout(delay())
-                self.send_rreply(src)
-
-        elif msg == 'data':
-            if self.id is not DEST:
-                yield self.timeout(.2)
-                self.send_data(src,**kwargs)
-            else:
-                seq = kwargs['seq']
-                self.log(f"Got data from {src} with seq {seq}")
-
-###########################################################
 sim = wsp.Simulator(
-        until=100,
-        timescale=1,
+        until=2000,
+        timescale=0.01,
         visual=True,
         terrain_size=(100,100),
-        title="IOTDevice WiSARD Routing")
+        title="IOTDevice Transmission Control")
 
 # define a line style for parent links
 sim.scene.linestyle("parent", color=(0,.8,0), arrow="tail", width=2)
@@ -111,13 +112,13 @@ sim.scene.linestyle("parent", color=(0,.8,0), arrow="tail", width=2)
 # place nodes over 100x100 grids
 count = 0
 for x in range(10):
-    count = count + 1
     for y in range(10):
-        count = count + 1
-        px = 100 + x*80 + random.uniform(-20,20)
-        py = 100 + y*60 + random.uniform(-20,20)
-        node = sim.add_node(IoTDevice, (px,py))
+        node = sim.add_node(IoTDevice, (PX[count], PY[count]))
+        node.tx_range = TX_RANGE[count]
+        node.next = NEXT[count]
+        node.capacity = BATTERY[count]/100
         node.logging = True
+        count += 1
 
 # start the simulation
 sim.run()

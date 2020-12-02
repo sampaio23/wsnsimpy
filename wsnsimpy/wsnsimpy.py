@@ -128,11 +128,6 @@ class Node:
 
 ###########################################################
 class IoTNode:
-    tx_range = 100
-    battery = 1
-    bandwidth = 1
-    error_rate = 0
-    WiSARD = 1
 
     ############################
     def __init__(self,sim,id,pos):
@@ -143,12 +138,10 @@ class IoTNode:
         self.neighbor_distance_list = []
         self.timeout = self.sim.timeout
         
-        self.battery = random.uniform(0.8, 1)
-        self.tx_range = 200
-        self.battery = 1
-        self.bandwidth = 1
-        self.error_rate = 0
-        self.WiSARD = random.uniform(0.3, 1)
+        self.tx_range = 0
+        self.battery = 0
+        self.capacity = 1
+        self.next = {}
 
     ############################
     def __repr__(self):
@@ -171,12 +164,11 @@ class IoTNode:
     ############################
     def send(self,dst,*args,**kwargs):
         for (dist,node) in self.neighbor_distance_list:
-            if dist <= self.tx_range*self.WiSARD*node.WiSARD:
-            #if dist <= self.tx_range:
+            if dist <= self.tx_range:
                 if dst == BROADCAST_ADDR or dst is node.id:
-                    prop_time = dist/300000000
+                    prop_time = dist/1000000
                     self.delayed_exec(
-                            prop_time,node.on_receive,self.id,*args,**kwargs)
+                            prop_time,node.on_receive,self.id, *args,**kwargs)
 
     ############################
     @property
